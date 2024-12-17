@@ -1,0 +1,12 @@
+[
+    {
+        "Name": "react-native-modal",
+        "License": "MIT License",
+        "License File": "https://github.com/react-native-modal/react-native-modal/blob/master/LICENSE.md",
+        "Version Number": "13.0.1",
+        "Owner" : "xiafeng@huawei.com",
+        "Upstream URL": "https://github.com/react-native-modal/react-native-modal",
+        "Description": "An enhanced React Native modal",
+        "Dependencies": ["react-native-animatable"]
+    }
+]
