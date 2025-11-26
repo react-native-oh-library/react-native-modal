@@ -236,6 +236,13 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
     if (!state.isVisible && nextProps.isVisible) {
       return { isVisible: true, showContent: true };
     }
+    const isSwipeable = !!nextProps.swipeDirection;
+    if (isSwipeable !== state.isSwipeable) {
+      return { 
+          ...state,
+          isSwipeable,
+      };
+    }
     return null;
   }
   componentDidMount() {
@@ -270,6 +277,29 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
   }
 
   componentDidUpdate(prevProps: ModalProps) {
+    if (this.props.panResponderThreshold !== prevProps.panResponderThreshold) {   
+      if (this.state.isSwipeable) {  
+          this.buildPanResponder();
+      }
+    }
+    const wasSwipeable = !!prevProps.swipeDirection;
+    const isSwipeable = !!this.props.swipeDirection;
+    
+    if (wasSwipeable !== isSwipeable) {
+      this.setState({ isSwipeable }, () => {
+          if (isSwipeable) {
+              if (!this.state.pan) {
+                  this.setState({
+                      pan: new Animated.ValueXY({x: 0, y: 0})
+                  }, () => {
+                      this.buildPanResponder();
+                  });
+              } else {
+                  this.buildPanResponder();
+              }
+          }
+      });
+    }
     // If the animations have been changed then rebuild them to make sure we're
     // using the most up-to-date ones
     if (
@@ -421,8 +451,14 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
       onPanResponderRelease: (evt, gestureState) => {
         // Call the onSwipe prop if the threshold has been exceeded on the right direction
         const accDistance = this.getAccDistancePerDirection(gestureState);
+        const swipeOrPanResponderThreshold = this.getSwipeOrPanResponderThreshold()
+
+        // if (
+        //   accDistance > this.props.swipeThreshold &&
+        //   this.isSwipeDirectionAllowed(gestureState)
+        // ) {
         if (
-          accDistance > this.props.swipeThreshold &&
+          accDistance > swipeOrPanResponderThreshold &&
           this.isSwipeDirectionAllowed(gestureState)
         ) {
           if (this.props.onSwipeComplete) {
@@ -471,6 +507,22 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
       },
     });
   };
+  getSwipeOrPanResponderThreshold() {
+    const { swipeThreshold, panResponderThreshold } = this.props;
+
+    const isSwipeThresholdValid = swipeThreshold != null;
+    const isPanThresholdValid = panResponderThreshold != null;
+
+    if (isPanThresholdValid && isSwipeThresholdValid) {
+        return Math.max(swipeThreshold, panResponderThreshold);
+    } else if (isPanThresholdValid) {
+        return panResponderThreshold;
+    } else if (isSwipeThresholdValid) {
+        return swipeThreshold;
+    } else {
+        return 0; 
+    }
+  }
 
   getAccDistancePerDirection = (gestureState: PanResponderGestureState) => {
     switch (this.currentSwipingDirection) {
@@ -603,15 +655,30 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
     // This is for resetting the pan position,otherwise the modal gets stuck
     // at the last released position when you try to open it.
     // TODO: Could certainly be improved - no idea for the moment.
-    if (this.state.isSwipeable) {
-      this.state.pan!.setValue({ x: 0, y: 0 });
-    }
+    // if (this.state.isSwipeable) {
+    //   this.state.pan!.setValue({ x: 0, y: 0 });
+    // }
+
+     if (this.state.isSwipeable) {
+          if (!this.state.pan) {
+              this.state.pan = new Animated.ValueXY({ x: 0, y: 0 });
+          } else {
+              this.state.pan.setValue({ x: 0, y: 0 });
+          }
+      }
 
     if (this.contentRef) {
       this.props.onModalWillShow && this.props.onModalWillShow();
       if (this.interactionHandle == null) {
         this.interactionHandle = InteractionManager.createInteractionHandle();
       }
+
+      if(this.props.hideModalContentWhileAnimating){
+        this.setState({
+            showContent: false
+        });
+      }
+
       this.contentRef
         .animate(this.animationIn, this.props.animationInTiming)
         .then(() => {
@@ -748,6 +815,28 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
       </TouchableWithoutFeedback>
     );
   };
+getPanPosition = () => {
+    if (!this.state.isSwipeable || !this.state.pan) {
+        return {};
+    }
+    try {
+        if (this.props.useNativeDriver) {
+            if (this.state.pan.x && this.state.pan.y) {
+                return {
+                    transform: [
+                        { translateX: this.state.pan.x },
+                        { translateY: this.state.pan.y }
+                    ]
+                };
+            }
+        } else {
+            return this.state.pan.getLayout();
+        }
+    } catch (error) {
+        console.warn('Error getting pan position:', error);
+    }
+    return {};
+};
   render() {
     /* eslint-disable @typescript-eslint/no-unused-vars */
     const {
@@ -786,9 +875,10 @@ export class ReactNativeModal extends React.Component<ModalProps, State> {
       panHandlers = { ...this.panResponder!.panHandlers };
 
       if (useNativeDriver) {
-        panPosition = {
-          transform: this.state.pan!.getTranslateTransform(),
-        };
+        // panPosition = {
+        //   transform: this.state.pan!.getTranslateTransform(),
+        // };
+        panPosition = this.getPanPosition();
       } else {
         panPosition = this.state.pan!.getLayout();
       }
